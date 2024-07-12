@@ -288,7 +288,7 @@ def extract_text_from_folder(folder_path):
 
 
 
-path = r''
+path = r'C:\Users\a7700\Desktop\Tribu-Custom'
 exception = []
 raw_text = extract_text_from_folder(path)
                 
