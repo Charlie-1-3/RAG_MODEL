@@ -1,119 +1,109 @@
-import streamlit as st
-from streamlit_chat import message
+import os
+# import openai
+from langchain.chains import LLMChain
+from langchain_openai import AzureChatOpenAI
+from langchain_openai import AzureOpenAIEmbeddings
+from langchain.prompts import PromptTemplate
+from azure.identity import ClientSecretCredential
+from azure.keyvault.secrets import SecretClient
 from langchain_community.vectorstores.chroma import Chroma
-from brain import embeddings, llm_chain
 
+
+
+TENANT= ""
+CLIENT_ID = ""
+CLIENT_SECRET= ""
+credential = ClientSecretCredential(TENANT,CLIENT_ID,CLIENT_SECRET)
+VAULT_URL= ""
+client = SecretClient(vault_url=VAULT_URL, credential=credential)
+openai_key = client.get_secret("GenAIBIMInternalCapabilityOpenAIKey")
+
+os.environ["OPENAI_API_TYPE"] = ""
+os.environ["AZURE_OPENAI_ENDPOINT"] = ""
+os.environ["AZURE_OPENAI_API_KEY"] = openai_key.value
+os.environ["AZURE_OPENAI_API_VERSION"] = "2023-07-01-preview"
+
+
+# initialize the LLM & Embeddings
+llm = AzureChatOpenAI(
+            temperature=0,
+            deployment_name="gpt-4",
+            azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+            openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
+            openai_api_key=os.environ["AZURE_OPENAI_API_KEY"],
+            streaming=True,
+            model_name='gpt-4'
+        )
+embeddings = AzureOpenAIEmbeddings(deployment="embeddings", chunk_size=1)
+
+# set prompt template
+prompt_template_database = """Use the following pieces of context to answer the question at the end.
+If you are able to answer the question then provide the site path for more details regarding the answer. If you are unable to answer the question then don't add the site path to your answer at the end.
+site_path: {site_path}
+Strictly follow these steps to answer the questions:
+1. Read the question properly and find the important keywords in the question for answering.
+2. Figure out smartly the questions preposition and generate the answer based entirely on question's keywords then contextualise it to the users need
+3. Give answer with word limit greater than 200 words.
+4. Give any key value pair in statements along with statistiscal data. These key value pairs will contain column and row from which they were taken so clearly understand them for better answer creation.
+    1. Do not give any code and comments for the kay value answers.
+5. Do not return an answer without the site path for reference documents unless you are unable to answer the question.
+6. Do not try to make up an answer if you can't find any information regarding it.
+7. If you are unable to find the answer then find the closest answer possible. Only when you are not able to find the closest answer as well say unable to answer. Don't try to make up an answer in this case.
+
+
+{context}
+Question: {question}
+Answer:"""
+
+prompt_data = PromptTemplate(template=prompt_template_database, input_variables=["context", "question", "site_path"])
+llm_chain_data = LLMChain(llm=llm, prompt=prompt_data)
+# llm_chain1 = ( prompt_data | llm )
 
 # Load database
-db = Chroma(persist_directory="Database", embedding_function=embeddings)
+db = Chroma(persist_directory=Database_Path, embedding_function=embeddings)
+site_map={}
 
 
-def clear_chat_history():
-    st.session_state.messages = []
-
-
-st.set_page_config(page_title="AxtriaTalk", page_icon="C:/Users/a7700/Desktop/DEMO/LOGO.png")
-st.markdown("<h1 style='text-align: center;'>Talk To Your Data</h1>", unsafe_allow_html=True)
-
-if 'generated' not in st.session_state:
-    st.session_state['generated'] = []
-if 'past' not in st.session_state:
-    st.session_state['past'] = []
-if 'messages' not in st.session_state:
-    st.session_state['messages'] = [
-        {"role": "system", "content": "You are a helpful assistant."}
-    ]
-if 'model_name' not in st.session_state:
-    st.session_state['model_name'] = []
-if 'cost' not in st.session_state:
-    st.session_state['cost'] = []
-if 'total_tokens' not in st.session_state:
-    st.session_state['total_tokens'] = []
-if 'total_cost' not in st.session_state:
-    st.session_state['total_cost'] = 0.0
-
-# Sidebar - let user choose model, show total cost of current conversation, and let user clear the current conversation
-st.sidebar.title("Sidebar")
-model_name = st.sidebar.radio("Choose a model:", ("GPT-3.5", "GPT-4"))
-counter_placeholder = st.sidebar.empty()
-counter_placeholder.write(f"Total cost of this conversation: ${st.session_state['total_cost']:.5f}")
-clear_button = st.sidebar.button("Clear Conversation", key="clear")
-
-# Map model names to OpenAI model IDs
-if model_name == "GPT-3.5":
-    model = "gpt-3.5-turbo"
-else:
-    model = "gpt-4"
-
-if clear_button:
-    st.session_state['generated'] = []
-    st.session_state['past'] = []
-    st.session_state['messages'] = [
-        {"role": "system", "content": "You are a helpful assistant."}
-    ]
-    st.session_state['number_tokens'] = []
-    st.session_state['model_name'] = []
-    st.session_state['cost'] = []
-    st.session_state['total_cost'] = 0.0
-    st.session_state['total_tokens'] = []
-    counter_placeholder.write(f"Total cost of this conversation: ${st.session_state['total_cost']:.5f}")
 
 def generate_response(question):
-    st.session_state['messages'].append({"role": "user", "content": question})
 
     similar_docs = db.similarity_search(question, k=10)
     context = " ".join([doc.page_content for doc in similar_docs])
+    if len(similar_docs)==0:
+        return context
     file_path = similar_docs[0].metadata['file_path']
-    query_llm = llm_chain
-    response = query_llm.run({"context": context, "question": question, "file_path": file_path})
-    # formatted_response = f"{response}\n \nFor more details refer to this file: {file_path}"
-
-    st.session_state['messages'].append({"role": "assistant", "content": response})
-
-    # print(st.session_state['messages']) 
-
-    #########   token generation      ###########
-
-    # total_tokens = query_llm.total_tokens
-    # prompt_tokens = query_llm.prompt_tokens
-    # completion_tokens = query_llm.completion_tokens
-
-    return response, 0.0,0.0,0.0
+    query_llm = llm_chain_data
+    response = query_llm.run({"context": context, "question": question, "site_path": file_path})
+    return response
 
 
-# container for chat history
-response_container = st.container()
-# container for text box
-container = st.container()
 
 
-with container:
-    with st.form(key='my_form', clear_on_submit=True):
-        user_input = st.text_area("You:", key='input', height=100)
-        submit_button = st.form_submit_button(label='Send')
 
-    if submit_button and user_input:
-        output, total_tokens, prompt_tokens, completion_tokens = generate_response(user_input)
-        st.session_state['past'].append(user_input)
-        st.session_state['generated'].append(output)
-        st.session_state['model_name'].append(model_name)
-        st.session_state['total_tokens'].append(total_tokens)
 
-        # from https://openai.com/pricing#language-models
-        if model_name == "GPT-3.5":
-            cost = total_tokens * 0.002 / 1000
-        else:
-            cost = (prompt_tokens * 0.03 + completion_tokens * 0.06) / 1000
 
-        st.session_state['cost'].append(cost)
-        st.session_state['total_cost'] += cost
+#LLMChain for CodeGenerator
 
-if st.session_state['generated']:
-    with response_container:
-        for i in range(len(st.session_state['generated'])):
-            message(st.session_state["past"][i], is_user=True, key=str(i) + '_user')
-            message(st.session_state["generated"][i], key=str(i))
-            st.write(
-                f"Model used: {st.session_state['model_name'][i]}; Number of tokens: {st.session_state['total_tokens'][i]}; Cost: ${st.session_state['cost'][i]:.5f}")
-            counter_placeholder.write(f"Total cost of this conversation: ${st.session_state['total_cost']:.5f}")
+prompt_template_coding_assistant = """ You are a coding assistant.
+Answer the Question: {question}
+Strictly follow these steps to answer the questions:
+1. Read the question properly and find the important keywords in the question for answering.
+2. Figure out smartly the questions preposition and generate the answer based entirely on question's keywords then contextualise it to the users need
+3. Give a brief context of the approach and working used in the code before the start of the code.
+4. Provide name of every package and module imported in the code.
+5. Every line of code must have comments that clearly explains the working of that line.
+6. Provide an input ouput example appropriate for this code.
+7. Naming of variables should follow proper convention.
+8. Properly state the algorithm names used in the code at the end of the answer for reference.
+
+Answer:"""
+
+prompt_code = PromptTemplate(template=prompt_template_coding_assistant, input_variables=["question"])
+llm_chain_code = LLMChain(llm=llm, prompt=prompt_code)
+# llm_chain1 = ( prompt_code | llm )
+
+def generate_code(question):
+    query_llm = llm_chain_code
+    response = query_llm.run({ "question": question })
+    return response
 
