@@ -12,8 +12,9 @@ This documentation provides an overview of the RAG_MODEL-app, its structure, and
 ```
 RAG_MODEL-app/
 ├── Api/
-├── EXTRACTOR.py
-├── main.py
+├── src/
+├────── EXTRACTOR.py
+├────── main.py
 ├── README.md
 ├── requirements.txt
 ```
@@ -24,11 +25,11 @@ This directory contains the API-related code and resources. The specifics of thi
 
 - (Detail any specific files and their purposes here if available.)
 
-### `EXTRACTOR.py`
+### `src/EXTRACTOR.py`
 
 This script is responsible for the data extraction processes used by the RAG model.
 
-### `main.py`
+### `src/main.py`
 
 The main entry point for running the RAG model application. This script likely orchestrates the overall workflow of the application.
 
@@ -68,11 +69,11 @@ pip install -r requirements.txt
 
 (Provide details on the specific contents of the `Api/` directory if necessary.)
 
-### `EXTRACTOR.py`
+### `src/EXTRACTOR.py`
 
 This script handles the extraction of data required for the RAG model. It may include functions for data preprocessing, feature extraction, and other related tasks.
 
-### `main.py`
+### `src/main.py`
 
 The central script for running the application. It may include the following:
 - Initialization of the model
